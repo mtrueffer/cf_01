@@ -18,3 +18,6 @@ def load_unit_stats(filepath):
                 "spawn_rate": float(row["spawn_rate"])
             }
     return unit_stats
+
+def have_same_sign(a, b):
+    return (a >= 0 and b>= 0) or (a < 0 and b < 0)

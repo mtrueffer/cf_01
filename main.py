@@ -1,12 +1,12 @@
 from src import Game
 
 def main():
-    game = Game(battlefield_length=20)
-    game.spawn_random_unit()
-    game.spawn_random_unit()
-    game.spawn_unit("Mage",from_left=True)
-    game.spawn_unit("Mage",from_left=False)
-    game.run(ticks=20)
+    game = Game(battlefield_length=20,ticks=20,console_level="debug")
+    #game.spawn_random_unit()
+    #game.spawn_random_unit()
+    game.spawn_unit("Footman","Red",from_left=True)
+    game.spawn_unit("Footman","Blue",from_left=False)
+    game.run()
 
 if __name__ == "__main__":
     main()

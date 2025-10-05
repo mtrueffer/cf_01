@@ -2,57 +2,103 @@ import time
 import random
 
 from .unit import Unit
-from .utils import load_unit_stats
+from .utils import load_unit_stats, have_same_sign
+from .logger import Logger
 
 class Game:
-    def __init__(self, battlefield_length=20, unit_stats_file="src/unit_stats.csv", tick_time=1):
+    def __init__(self, battlefield_length=20, ticks=20, console_level="info", unit_stats_file="src/unit_stats.csv", tick_time=1):
         self.units = []
-        self.battlefield_length = battlefield_length
+        self.length = battlefield_length
         self.unit_stats = load_unit_stats(unit_stats_file)
         self.unit_counters = {}
         self.tick_time = tick_time
-        self.tick_count = 0
+        self.ticks = ticks
+        self.tick = 0
+        self.logger = Logger(console_level=console_level)
+        self.bins = {}
+        self.bin_size = self.length // 4
 
-    def spawn_unit(self, unit_type, from_left=True):
+        self.logger.log("none",f"New game with battlefield length of {self.length} that will last {self.ticks} turns.", None, "system") 
+
+    def spawn_unit(self, unit_type, faction, from_left=True):
         if unit_type not in self.unit_stats:
             raise ValueError(f"Unknown unit type: {unit_type}")
 
         stats = self.unit_stats[unit_type]
+
         if unit_type not in self.unit_counters:
             self.unit_counters[unit_type] = 1
         else:
             self.unit_counters[unit_type] += 1
+
         name = f"{unit_type} {self.unit_counters[unit_type]}"
         unit = Unit(
+            game=self,
             name=name,
             speed=stats["speed"],
             health=stats["health"],
             damage=stats["damage"],
             range=stats["range"],
-            battlefield_length=self.battlefield_length,
+            faction=faction,
             from_left=from_left
         )
         self.units.append(unit)
-        print(f"{name} spawned on the {'left' if from_left else 'right'} side at {unit.position}")
+        self.add_to_bin(unit)
 
     def spawn_random_unit(self):
         unit_type = random.choice(list(self.unit_stats.keys()))
+        faction = random.choice(["Blue", "Red"])
         from_left = random.choice([True, False])
-        self.spawn_unit(unit_type, from_left)
+        self.spawn_unit(unit_type, faction, from_left)
+
+    def get_bin_index(self, position):
+        return int(position // self.bin_size)
+
+    def add_to_bin(self, unit):
+        idx = self.get_bin_index(unit.position)
+        self.bins.setdefault(idx, []).append(unit)
+        unit.bin_index = idx
+
+    def rem_from_bin(self, unit):
+        self.bins[unit.bin_index].remove(unit)
+
+    def move_unit(self, unit):
+        unit.move()
+        new_idx = self.get_bin_index(unit.position)
+        if new_idx != unit.bin_index:
+            self.rem_from_bin(unit)
+            self.add_to_bin(unit)
+
+    def detect_nearby_units(self, unit, vision_range):
+        idx = unit.bin_index
+        nearby_units = []
+        for neighbour_idx in (idx - 1, idx, idx + 1):
+            for other in self.bins.get(neighbour_idx, []):
+                if other is not unit:
+                    dist = other.position - unit.position
+                    self.logger.log("", f"unit: {unit.name}, dist: {dist}, range: {vision_range}, unit direction: {unit.direction}", self.tick, "debug")
+                    if abs(dist) <= vision_range and have_same_sign(dist,unit.direction):
+                        nearby_units.append(other)
+        return nearby_units
 
     def update(self):
-        self.tick_count += 1
-        print(f"\n--- Tick {self.tick_count} ---")
+        self.tick += 1
 
         for unit in self.units:
             if unit.is_alive():
-                unit.move()
-                if unit.position >= self.battlefield_length:
-                    print(f"{unit.name} reached the end!")
-            else:
-                print(f"{unit.name} is dead and does not move.")
+                nearby_units = []
+                nearby_units = self.detect_nearby_units(unit,5)
+                for nearby_unit in nearby_units:
+                    self.logger.log(unit.faction, f"{unit.name} can see {nearby_unit.name}.", self.tick, "debug")
 
-    def run(self, ticks=10):
-        for _ in range(ticks):
+                self.move_unit(unit)
+                if unit.position >= self.length:
+                    self.logger.log(unit.faction, f"{unit.name} reached the end!", self.tick)
+            else:
+                self.rem_from_bin(unit)
+                self.logger.log(unit.faction, f"{unit.name} is dead and does not move.", self.tick)
+
+    def run(self):
+        for _ in range(self.ticks):
             self.update()
             time.sleep(self.tick_time)
