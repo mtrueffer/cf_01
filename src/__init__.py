@@ -1,2 +1,2 @@
-from .unit import Unit, Knight, Footman
+from .unit import Unit
 from .game import Game
