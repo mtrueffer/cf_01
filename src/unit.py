@@ -13,6 +13,8 @@ class Unit:
 
         self.bin_index = None
 
+        self.vision = 5
+
         self.game.logger.log(
             self.faction,
             f"{self.name} of the {self.faction} team spawned on the {'left' if from_left else 'right'}!",

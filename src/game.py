@@ -2,8 +2,9 @@ import time
 import random
 
 from .unit import Unit
-from .utils import load_unit_stats, have_same_sign
+from .utils import load_unit_stats
 from .logger import Logger
+from .spatial_grid import SpatialGrid # type: ignore
 
 class Game:
     def __init__(self, battlefield_length=20, ticks=20, console_level="info", unit_stats_file="src/unit_stats.csv", tick_time=1):
@@ -15,8 +16,7 @@ class Game:
         self.ticks = ticks
         self.tick = 0
         self.logger = Logger(console_level=console_level)
-        self.bins = {}
-        self.bin_size = self.length // 4
+        self.grid = SpatialGrid(self.length // 4, self.logger, self.tick)
 
         self.logger.log("none",f"New game with battlefield length of {self.length} that will last {self.ticks} turns.", None, "system") 
 
@@ -43,7 +43,7 @@ class Game:
             from_left=from_left
         )
         self.units.append(unit)
-        self.add_to_bin(unit)
+        self.grid.add(unit)
 
     def spawn_random_unit(self):
         unit_type = random.choice(list(self.unit_stats.keys()))
@@ -51,47 +51,18 @@ class Game:
         from_left = random.choice([True, False])
         self.spawn_unit(unit_type, faction, from_left)
 
-    def get_bin_index(self, position):
-        return int(position // self.bin_size)
-
-    def add_to_bin(self, unit):
-        idx = self.get_bin_index(unit.position)
-        self.bins.setdefault(idx, []).append(unit)
-        unit.bin_index = idx
-
-    def rem_from_bin(self, unit):
-        self.bins[unit.bin_index].remove(unit)
-
-    def move_unit(self, unit):
-        unit.move()
-        new_idx = self.get_bin_index(unit.position)
-        if new_idx != unit.bin_index:
-            self.rem_from_bin(unit)
-            self.add_to_bin(unit)
-
-    def detect_nearby_units(self, unit, vision_range):
-        idx = unit.bin_index
-        nearby_units = []
-        for neighbour_idx in (idx - 1, idx, idx + 1):
-            for other in self.bins.get(neighbour_idx, []):
-                if other is not unit:
-                    dist = other.position - unit.position
-                    self.logger.log("", f"unit: {unit.name}, dist: {dist}, range: {vision_range}, unit direction: {unit.direction}", self.tick, "debug")
-                    if abs(dist) <= vision_range and have_same_sign(dist,unit.direction):
-                        nearby_units.append(other)
-        return nearby_units
-
     def update(self):
         self.tick += 1
 
         for unit in self.units:
             if unit.is_alive():
                 nearby_units = []
-                nearby_units = self.detect_nearby_units(unit,5)
+                nearby_units = self.grid.nearby(unit, vision_range=unit.vision)
                 for nearby_unit in nearby_units:
                     self.logger.log(unit.faction, f"{unit.name} can see {nearby_unit.name}.", self.tick, "debug")
 
-                self.move_unit(unit)
+                unit.move()
+                self.grid.move(unit)
                 if unit.position >= self.length:
                     self.logger.log(unit.faction, f"{unit.name} reached the end!", self.tick)
             else:
